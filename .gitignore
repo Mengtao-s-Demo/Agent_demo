@@ -20,3 +20,5 @@ __pycache__/
 .LSOverride
 # 网络共享文件夹生成文件
 .FSEvents
+
+.env
