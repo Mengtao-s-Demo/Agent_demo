@@ -180,7 +180,6 @@ def run_agent_loop():
     now_count = 0
     while now_count <= 5:
         print("开始循环")
-        now_count += 1
         response = mock_model(history)
 
         print(f"========={now_count}=======")
@@ -191,20 +190,31 @@ def run_agent_loop():
         if tool_calls is not None:
             for t in tool_calls:
                 print(f"调用工具：{t["name"]}，工具参数：{t["arguments"]}")
-                tool_result = tool_registry.execute_tool(t["name"],json.loads(t["arguments"]))
-                print(f"调用工具：{t["name"]},工具结果：{tool_result}")
-                history.append(
-                    {"role":"tool","tool_call_id":t["id"],"content":tool_result}
-                )
+                try:
+                    tool_result = tool_registry.execute_tool(t["name"],json.loads(t["arguments"]))
+                    print(f"调用工具：{t["name"]},工具结果：{tool_result}")
+                    history.append(
+                        {"role":"tool","tool_call_id":t["id"],"content":tool_result}
+                    )
+                except ValueError as e:
+                    history.append(
+                        {"role":"tool","tool_call_id":t["id"],"content":f"调用工具报错：{e}"}
+                    )
+                
+
         else:
             print(f"最终答案：{response}")
             return response
 
+        
+        now_count += 1
+
     # 超过最大次数，直接最终回答
-    history.append(
-        {"role":"assistant","content":"已经达到最大步骤：5，强制停止循环，根据以上信息，请作出最终回答"}
-    )
-    final_response = mock_model(history)
+    # history.append(
+    #     {"role":"assistant","content":"已经达到最大步骤：5，强制停止循环，根据以上信息，请作出最终回答"}
+    # )
+    # final_response = mock_model(history)
+    final_response = "当前已经到达最大步骤，结束循环"
     print(f"============final response===============")
     print(final_response)
     return final_response
