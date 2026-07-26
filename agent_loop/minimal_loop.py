@@ -145,7 +145,7 @@ def mock_model(messages: list[dict]):
         }
     else :
         # 随机引入一次工具调用
-        choice = random.choices([1,2,3])
+        choice = random.choice([1,2,3])
         if choice == 1:
             return {
                 "role":"assistant",
@@ -178,7 +178,7 @@ def run_agent_loop():
     ]
     max_count = 5
     now_count = 0
-    while now_count < 5:
+    while now_count <= 5:
         print("开始循环")
         now_count += 1
         response = mock_model(history)
@@ -191,7 +191,7 @@ def run_agent_loop():
         if tool_calls is not None:
             for t in tool_calls:
                 print(f"调用工具：{t["name"]}，工具参数：{t["arguments"]}")
-                tool_result = tool_registry.execute_tool(t["name"])
+                tool_result = tool_registry.execute_tool(t["name"],json.loads(t["arguments"]))
                 print(f"调用工具：{t["name"]},工具结果：{tool_result}")
                 history.append(
                     {"role":"tool","tool_call_id":t["id"],"content":tool_result}
@@ -202,12 +202,13 @@ def run_agent_loop():
 
     # 超过最大次数，直接最终回答
     history.append(
-        {"role":"assistant","content":"根据以上信息，请作出最终回答"}
+        {"role":"assistant","content":"已经达到最大步骤：5，强制停止循环，根据以上信息，请作出最终回答"}
     )
     final_response = mock_model(history)
     print(f"============final response===============")
     print(final_response)
     return final_response
 
-run_agent_loop()
+if __name__ == "__main__":
+    run_agent_loop()
                 
