@@ -178,7 +178,7 @@ def run_agent_loop():
     ]
     max_count = 5
     now_count = 0
-    while now_count <= 5:
+    while now_count < 5:
         print("开始循环")
         response = mock_model(history)
 
@@ -196,7 +196,7 @@ def run_agent_loop():
                     history.append(
                         {"role":"tool","tool_call_id":t["id"],"content":tool_result}
                     )
-                except ValueError as e:
+                except Exception as e:
                     history.append(
                         {"role":"tool","tool_call_id":t["id"],"content":f"调用工具报错：{e}"}
                     )
