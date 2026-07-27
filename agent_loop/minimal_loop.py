@@ -3,12 +3,13 @@
 # 工具示例：`get_time`（返回当前时间文本）、`add_numbers`（校验 a 和 b 为整数并返回和），
 # 故意设计一个可能失败的工具 `trouble_tool` （参数小于 0 时抛异常）。
 
-from pydantic import BaseModel,Field
+from pydantic import BaseModel,Field,ValidationError as PyValidError
 from typing import Callable,Type
 import json
 from datetime import datetime
 import uuid
 import random
+from .notes import ValidationError
 
 class ToolRegistry:
     def __init__(self,tools: list[Tool] = []):
@@ -60,6 +61,9 @@ class Tool:
 
         try:
             return self.func(**params.model_dump())
+        except PyValidError as pye:
+            print(f"执行tool{self.func.__name__}失败，错误原因：{pye}")
+            raise ValidationError(f"参数校验错误: {pye}")
         except Exception as e:
             print(f"执行tool{self.func.__name__}失败，错误原因：{e}")
             return f"执行tool {self.func.__name__}失败，错误原因：{e}"
