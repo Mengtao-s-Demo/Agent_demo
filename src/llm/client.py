@@ -13,6 +13,13 @@ client = OpenAI(
     base_url=BASE_URL
 )
 
+def do_chat(messages,tools):
+    return client.chat.completions.create(
+        model=OPENAI_MODEL_NAME,
+        messages=messages,
+        tools=tools
+    )
+
 # response = client.chat.completions.create(
 #             model=OPENAI_MODEL_NAME,
 #             messages=[
