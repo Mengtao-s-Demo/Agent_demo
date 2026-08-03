@@ -1,5 +1,5 @@
-from pydantic import BaseModel,model_validator
-from typing import Literal
+from pydantic import BaseModel,model_validator,Field
+from typing import Literal,Annotated
 from uuid import uuid4
 from datetime import datetime
 
@@ -12,8 +12,35 @@ class SystemMessage(Message):
 class UserMessage(Message):
     role:Literal["user"] = "user"
 
+class FunctionCall(BaseModel):
+    name:str
+    arguments:str
+
+class ToolCall(BaseModel):
+    id:str
+    type: Literal["function"] = 'function'
+    function: FunctionCall
+
 class AssistantMessage(Message):
     role : Literal["assistant"] = "assistant"
+    tool_calls: list[ToolCall] | None
+
+    @classmethod
+    def convert_openai_message(cls,openai_message) -> AssistantMessage:
+        """转换openai的message格式"""
+        tool_call = openai_message.tool_calls
+        if tool_call == None:
+            return AssistantMessage(
+                role="assistant",content=openai_message.content,tool_calls=None
+            )
+        else:
+            return AssistantMessage(
+                role="assistant",content="",
+                tool_calls = [
+                    ToolCall(id=t.id,type="function",function=FunctionCall(name=t.function.name,arguments=t.function.arguments))
+                    for t in tool_call
+                ]
+            )
 
 class ToolMessage(Message):
     role:Literal["tool"] = "tool"
@@ -57,10 +84,18 @@ class Metadata(BaseModel):
     user_id:str
     max_tool_retried_time: int = 3
 
+type MessageType = Annotated[
+    SystemMessage |
+    UserMessage |
+    AssistantMessage |
+    ToolMessage,
+    Field(discriminator="role")
+]
+
 class AgentState(BaseModel):
     session_id:str
     user_id:str
-    messages: list[Message]
+    messages: list[MessageType]
     tool_calls: list[ToolCallRecord] | None
     errors: AgentError | None
     artifacts: list[Artifact] | None
@@ -73,11 +108,12 @@ class AgentState(BaseModel):
     metadata: Metadata
 
     @classmethod
-    def load_json_state(cls,json_state:str):
+    def load_json_state(cls,json_state:str) -> AgentState:
         try:
             state = cls.model_validate_json(json_state)
             if state.version != 1:
                 raise ValueError("模型版本错误！")
+            return state
         except Exception as e:
             raise ValueError("加载模型错误")
 

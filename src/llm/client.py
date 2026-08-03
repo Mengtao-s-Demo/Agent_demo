@@ -1,6 +1,8 @@
 from dotenv import load_dotenv
 import os
 from openai import OpenAI
+from stateful_agent.models import MessageType
+from collections.abc import Sequence
 
 load_dotenv()
 
@@ -13,10 +15,17 @@ client = OpenAI(
     base_url=BASE_URL
 )
 
-def do_chat(messages,tools):
+def do_chat(messages:Sequence[MessageType],tools):
+
+
+    openai_messages = [
+        message.model_dump(exclude_none=True)
+        for message in messages
+    ]
+
     return client.chat.completions.create(
         model=OPENAI_MODEL_NAME,
-        messages=messages,
+        messages=openai_messages,
         tools=tools
     )
 

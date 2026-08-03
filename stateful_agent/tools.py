@@ -1,7 +1,7 @@
 from pydantic import BaseModel,Field
 from datetime import datetime
 from typing import Callable
-from .models import AgentState,UserMessage,SystemMessage,Metadata,AgentError,ToolCallRecord,ToolMessage
+from .models import AgentState,UserMessage,SystemMessage,Metadata,AgentError,ToolCallRecord,ToolMessage,AssistantMessage
 from uuid import uuid4
 from dataclasses import dataclass
 from src.llm.client import do_chat
@@ -36,6 +36,9 @@ class Tool:
             }
         }
 
+class ToolNotExitsError(Exception):
+    pass
+
 class ToolRegistry:
     def __init__(self,tools:list[Tool]) -> None:
         self.tools = tools
@@ -47,7 +50,7 @@ class ToolRegistry:
         )
 
         if exist_tool == None:
-            raise ValueError(f"tool name: {tool_name} 不存在")
+            raise ToolNotExitsError(f"tool name: {tool_name} 不存在")
 
         validate_params = exist_tool.params.model_validate_json(params)
         params_dict = validate_params.model_dump()
@@ -57,8 +60,9 @@ class ToolRegistry:
 @dataclass
 class Agent:
     state:AgentState|None = None
+    max_steps: int = 8
 
-    def run(self,input:str):
+    def run(self,input:str,state_json:str|None = None):
         tool_registry = ToolRegistry([
             Tool(get_current_weather,WeatherParam),
             Tool(get_current_time,TimeParam)
@@ -72,33 +76,39 @@ class Agent:
         ]
 
         # 初始化state
-        self.state = AgentState(
-            session_id=str(uuid4()),
-            user_id='tom',
-            messages=messages,
-            tool_calls=None,
-            errors=None,
-            artifacts=None,
-            current_step='initializing',
-            created_at=int(datetime.now().timestamp()),
-            updated_at=int(datetime.now().timestamp()),
-            version=1,
-            metadata=Metadata(
-                trace_id=str(uuid4()),user_id="tom",max_tool_retried_time=3
+        if state_json == None:
+            self.state = AgentState(
+                session_id=str(uuid4()),
+                user_id='tom',
+                messages=messages,
+                tool_calls=None,
+                errors=None,
+                artifacts=None,
+                current_step='initializing',
+                created_at=int(datetime.now().timestamp()),
+                updated_at=int(datetime.now().timestamp()),
+                version=1,
+                metadata=Metadata(
+                    trace_id=str(uuid4()),user_id="tom",max_tool_retried_time=3
+                )
             )
-        )
+        else:
+            self.state = AgentState.load_json_state(state_json)
 
-        while self.state.current_step != "completed" and self.state.current_step !="failed":
+        current_step_count = 0
+
+        while self.state.current_step != "completed" and self.state.current_step !="failed" and current_step_count < self.max_steps:
             print('================')
             print(self.state)
             self.state.current_step = "generating_response"
             try:
                 response = do_chat(self.state.messages,tools=tool_schemas)
+                current_step_count += 1
                 print(f"response is : {response}")
 
                 message = response.choices[0].message
 
-                self.state.messages.append(message)
+                self.state.messages.append(AssistantMessage.convert_openai_message(message))
 
                 tool_calls = message.tool_calls
 
@@ -114,7 +124,7 @@ class Agent:
                             status="pending",
                             error=None,
                             content=None,
-                            tried_times=1
+                            tried_times=0
                         )
                         self.state.tool_calls.append(tool_call_result)
                         ## 执行任务
@@ -133,6 +143,20 @@ class Agent:
                                 tool_call_result.content = tool_result
                                 tool_call_result.status = "succeeded"
                                 break
+                            except ToolNotExitsError as te:
+                                ## 工具不存在，不用再执行了，直接跳出错误
+                                tool_call_result.status = "failed"
+                                tool_call_result.error = {
+                                    "type":"ToolNotExitsError",
+                                    "content":"工具不存在！"
+                                }
+                                ## 更新工具消息
+                                self.state.messages.append(ToolMessage(
+                                    tool_call_id = tool_call.id,
+                                    content="工具不存在",
+                                    role="tool"
+                                ))
+                                break
                             except Exception as e:
                                 tool_call_result.tried_times += 1
                                 tool_call_result.error = {
@@ -141,6 +165,7 @@ class Agent:
                                 }
                                 if tool_call_result.tried_times > self.state.metadata.max_tool_retried_time:
                                     # 超过最大次数，升级 为state错误
+                                    tool_call_result.status = "failed"
                                     self.state.current_step = "failed"
                                     self.state.errors = AgentError(type=str(type(e)),detail=f"调用工具:{tool_call.function.name},达到最大调用次数！")
                                     break
