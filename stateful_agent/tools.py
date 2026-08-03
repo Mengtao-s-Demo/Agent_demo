@@ -101,9 +101,10 @@ class Agent:
             print('================')
             print(self.state)
             self.state.current_step = "generating_response"
+            current_step_count += 1
+
             try:
                 response = do_chat(self.state.messages,tools=tool_schemas)
-                current_step_count += 1
                 print(f"response is : {response}")
 
                 message = response.choices[0].message
@@ -142,6 +143,8 @@ class Agent:
                                 # 更新state
                                 tool_call_result.content = tool_result
                                 tool_call_result.status = "succeeded"
+                                if tool_call_result.error != None:
+                                    tool_call_result.error = None
                                 break
                             except ToolNotExitsError as te:
                                 ## 工具不存在，不用再执行了，直接跳出错误
