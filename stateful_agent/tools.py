@@ -1,4 +1,4 @@
-from pydantic import BaseModel,Field
+from pydantic import BaseModel,Field,ValidationError as PyValidError
 from datetime import datetime
 from typing import Callable
 from .models import AgentState,UserMessage,SystemMessage,Metadata,AgentError,ToolCallRecord,ToolMessage,AssistantMessage
@@ -160,6 +160,20 @@ class Agent:
                                     role="tool"
                                 ))
                                 break
+                            except PyValidError as ve:
+                                ## 工具参数不合法，不用再执行了，直接跳出错误
+                                tool_call_result.status = "failed"
+                                tool_call_result.error = {
+                                    "type":"ToolParamInvalid",
+                                    "content":str(ve)
+                                }
+                                ## 更新工具消息
+                                self.state.messages.append(ToolMessage(
+                                    tool_call_id = tool_call.id,
+                                    content="工具参数不合法",
+                                    role="tool"
+                                ))
+                                break
                             except Exception as e:
                                 tool_call_result.tried_times += 1
                                 tool_call_result.error = {
@@ -184,9 +198,17 @@ class Agent:
                     detail=str(e)
                 )
 
+        ## 判断最大步骤
+        if current_step_count >= self.max_steps:
+            self.state.current_step = "failed"
+            self.state.errors = AgentError(
+                type="MaxStepExceeded",
+                detail=f"超过最大步骤数:{self.max_steps}"
+            )
+
         print("[][][]][][][][][]")
         print(self.state)
 
-agent = Agent()
-
-agent.run("现在几点，今天武汉的天气是什么？")
+if __name__ == "__main__":
+    agent = Agent()
+    agent.run("现在几点，今天武汉的天气是什么？")
